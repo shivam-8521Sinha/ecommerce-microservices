@@ -1,19 +1,17 @@
-
-# Java and Maven
-**/target/
-**/*.class
-
-# IntelliJ
-.idea/
-**/.idea/
-*.iml
-
-# Secrets
+# Environment variables and secrets
 .env
 .env.*
 !.env.example
+
+# Local configuration
 **/application-local.yml
 **/application-local.yaml
+
+# Java / Maven
+**/target/
+**/*.class
+**/.idea/
+*.iml
 
 # Logs
 *.log
