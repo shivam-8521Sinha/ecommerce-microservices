@@ -28,6 +28,7 @@ public class OrderService {
     private final OutboxEventRepository outboxEventRepository;
     private final ObjectMapper objectMapper;
     private final OrderFailureService orderFailureService;
+    private final OrderPersistenceService orderPersistenceService;
 
 
     public OrderService(
@@ -37,7 +38,8 @@ public class OrderService {
             PaymentServiceClient paymentServiceClient,
             OutboxEventRepository outboxEventRepository,
             ObjectMapper objectMapper,
-            OrderFailureService orderFailureService
+            OrderFailureService orderFailureService,
+            OrderPersistenceService orderPersistenceService
     ) {
         this.orderRepository = orderRepository;
         this.productClient = productClient;
@@ -46,9 +48,10 @@ public class OrderService {
         this.outboxEventRepository = outboxEventRepository;
         this.objectMapper = objectMapper;
         this.orderFailureService = orderFailureService;
+        this.orderPersistenceService = orderPersistenceService;
     }
 
-    @Transactional
+    //@Transactional
     public Order createOrder(CreateOrderRequest request)
     {
         // 1. Get product information
@@ -66,15 +69,8 @@ public class OrderService {
         );
 
         // 4. Create and save order
-        Order order = new Order();
-
-        order.setProductId(request.getProductId());
-        order.setQuantity(request.getQuantity());
-        order.setTotalAmount(totalAmount);
-        order.setStatus("PENDING_PAYMENT");
-        order.setSagaStatus("STARTED");
-
-        order = orderRepository.save(order);
+        Order order = orderPersistenceService.createInitialOrder(
+                request.getProductId(), request.getQuantity(), totalAmount);
 
         try {
             inventoryClient.reserveInventory(inventoryRequest);
@@ -122,14 +118,39 @@ public class OrderService {
                 paymentServiceClient.processPayment(paymentRequest);
 
         // 8. Update order status
-        if ("SUCCESS".equals(payment.getStatus())) {
+
+        if ("SUCCESS".equals(payment.getStatus()))
+        {
             order.setStatus("CONFIRMED");
             order.setSagaStatus("COMPLETED");
-        } else {
+        } else if ("FAILED".equals(payment.getStatus()))
+        {
+            // Begin Saga compensation
+            order.setSagaStatus("COMPENSATING");
+            orderRepository.save(order);
+            try {
+                inventoryClient.releaseInventory(inventoryRequest);
+                order.setStatus("CANCELLED");
+                order.setSagaStatus("FAILED");
+
+            } catch (Exception compensationException)
+            {
+                // Compensation failed; retain a state that can be retried
+                order.setStatus("PAYMENT_PENDING");
+                order.setSagaStatus("COMPENSATING");
+                orderRepository.save(order);
+
+                throw new RuntimeException(
+                        "Payment failed, but inventory release failed for order "
+                                + order.getId(), compensationException);
+            }
+        }
+        else {
+            // Payment may still be in progress or its outcome may be uncertain
             order.setStatus("PAYMENT_PENDING");
             order.setSagaStatus("PAYMENT_PENDING");
         }
-
         return orderRepository.save(order);
+
     }
 }

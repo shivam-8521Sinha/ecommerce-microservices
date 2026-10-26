@@ -6,6 +6,8 @@ import com.ecommerce.payment.repository.PaymentRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+
 @Service
 public class PaymentService {
 
@@ -21,14 +23,14 @@ public class PaymentService {
         Payment payment = paymentRepository
                 .findByOrderId(request.getOrderId())
                 .orElse(null);
-
         // Idempotency:
         // If payment already exists for this order,
         // return the existing payment instead of creating another one.
         if (payment != null) {
             return payment;
         }
-        payment = new Payment(request.getOrderId(), request.getAmount(), "SUCCESS");
+        String paymentStatus = "SUCCESS";
+        payment = new Payment(request.getOrderId(), request.getAmount(), paymentStatus);
 
         return paymentRepository.save(payment);
     }
