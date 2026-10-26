@@ -22,8 +22,7 @@ public class InventoryService
         Inventory inventory = inventoryRepository
                         .findByProductId(request.getProductId())
                         .orElse(new Inventory(
-                                request.getProductId(), 0, 0
-                                )
+                                request.getProductId(), 0, 0)
                         );
 
         inventory.setAvailableQuantity(
@@ -69,16 +68,12 @@ public class InventoryService
                 inventoryRepository
                         .findByProductId(request.getProductId())
                         .orElseThrow(
-                                () -> new RuntimeException(
-                                        "Inventory not found"
-                                )
+                                () -> new RuntimeException("Inventory not found")
                         );
 
         if (inventory.getReservedQuantity() < request.getQuantity())
         {
-            throw new RuntimeException(
-                    "Cannot release more than reserved quantity"
-            );
+            throw new RuntimeException("Cannot release more than reserved quantity");
         }
 
         inventory.setReservedQuantity(
@@ -98,9 +93,7 @@ public class InventoryService
                 inventoryRepository
                         .findByProductId(productId)
                         .orElseThrow(
-                                () -> new RuntimeException(
-                                        "Inventory not found"
-                                )
+                                () -> new RuntimeException("Inventory not found")
                         );
 
         return toResponse(inventory);

@@ -24,6 +24,9 @@ public class Order {
     @Column(nullable = false)
     private String status;
 
+    @Column(name = "saga_status")
+    private String sagaStatus;
+
     public Order() {
     }
 
@@ -61,5 +64,13 @@ public class Order {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getSagaStatus() {
+        return sagaStatus;
+    }
+
+    public void setSagaStatus(String sagaStatus) {
+        this.sagaStatus = sagaStatus;
     }
 }

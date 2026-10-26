@@ -27,6 +27,8 @@ public class OrderService {
     private final PaymentServiceClient paymentServiceClient;
     private final OutboxEventRepository outboxEventRepository;
     private final ObjectMapper objectMapper;
+    private final OrderFailureService orderFailureService;
+
 
     public OrderService(
             OrderRepository orderRepository,
@@ -34,7 +36,8 @@ public class OrderService {
             InventoryClient inventoryClient,
             PaymentServiceClient paymentServiceClient,
             OutboxEventRepository outboxEventRepository,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            OrderFailureService orderFailureService
     ) {
         this.orderRepository = orderRepository;
         this.productClient = productClient;
@@ -42,6 +45,7 @@ public class OrderService {
         this.paymentServiceClient = paymentServiceClient;
         this.outboxEventRepository = outboxEventRepository;
         this.objectMapper = objectMapper;
+        this.orderFailureService = orderFailureService;
     }
 
     @Transactional
@@ -61,8 +65,6 @@ public class OrderService {
                 request.getQuantity()
         );
 
-        inventoryClient.reserveInventory(inventoryRequest);
-
         // 4. Create and save order
         Order order = new Order();
 
@@ -70,8 +72,19 @@ public class OrderService {
         order.setQuantity(request.getQuantity());
         order.setTotalAmount(totalAmount);
         order.setStatus("PENDING_PAYMENT");
+        order.setSagaStatus("STARTED");
 
         order = orderRepository.save(order);
+
+        try {
+            inventoryClient.reserveInventory(inventoryRequest);
+            order.setSagaStatus("INVENTORY_RESERVED");
+            orderRepository.save(order);
+        } catch (Exception e) {
+            orderFailureService.markOrderFailed(order.getId());
+            throw new RuntimeException(
+                    "Inventory reservation failed for order " + order.getId(), e);
+        }
 
         // 6. Save event in the SAME database transaction
         OutboxEvent outboxEvent = new OutboxEvent(
@@ -92,6 +105,7 @@ public class OrderService {
         eventData.put("totalAmount", order.getTotalAmount());
         eventData.put("status", order.getStatus());
 
+
         try {
             String payload = objectMapper.writeValueAsString(eventData);
             outboxEvent.setPayload(payload);
@@ -110,8 +124,10 @@ public class OrderService {
         // 8. Update order status
         if ("SUCCESS".equals(payment.getStatus())) {
             order.setStatus("CONFIRMED");
+            order.setSagaStatus("COMPLETED");
         } else {
             order.setStatus("PAYMENT_PENDING");
+            order.setSagaStatus("PAYMENT_PENDING");
         }
 
         return orderRepository.save(order);
